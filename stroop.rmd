@@ -1,48 +1,55 @@
 ---
 title: 'P1: Stroop Effect'
 output:
-  html_document:
-    df_print: paged
-  pdf_document: default
-  html_notebook:
+  knitrBootstrap::bootstrap_document:
+    title: "Test file"
     theme: flatly
+    highlight: tomorrow
 ---
-
+# P1: Stroop Effect
 Adittya
 September 2018
 
-## Introudction
+# Introudction
 
-In a Stroop task, participants are presented with a list of words, with each word displayed in a color of ink. The participant’s task is to say out loud the color of the ink in which the word is printed. The task has two conditions: a congruent words condition, and an incongruent words condition. In the congruent words condition, the words being displayed are color words whose names match the colors in which they are printed: for example <span style="color:red">RED</span>, <span style="color:blue">BLUE</span>. In the incongruent words condition, the words displayed are color words whose names do not match the colors in which they are printed: for example <span style="color:red">PURPLE</span>, <span style="color:blue">ORANGE</span>. In each case, we measure the time it takes to name the ink colors in equally-sized lists. Each participant will go through and record a time from each condition.
+In a Stroop task, participants are presented with a list of words, with each word displayed in a color of ink. The participant's task is to say out loud the color of the ink in which the word is printed. The task has two conditions: a congruent words condition, and an incongruent words condition. In the congruent words condition, the words being displayed are color words whose names match the colors in which they are printed: for example <span style="color:red">RED</span>, <span style="color:blue">BLUE</span>. In the incongruent words condition, the words displayed are color words whose names do not match the colors in which they are printed: for example <span style="color:red">PURPLE</span>, <span style="color:blue">ORANGE</span>. In each case, we measure the time it takes to name the ink colors in equally-sized lists. Each participant will go through and record a time from each condition.
 
-#
+# Methods
 
 ### (1) What is our independent variable? What is our dependent variable?
 
  * Our independent variable is the type of condition applied to the student, either the congruent condition or the incongruent condition. 
  
  * Our dependent variable is the time in seconds that it takes for the participant to name the ink colors in the list.
- 
-#
- 
+
 ### (2) What is an appropriate set of hypotheses for this task? Specify the null and alternative hypotheses based on what you think the researchers might be interested in. Justify your choices.
 
 The following will be the appropriate set of hypothesis in order to determine if the mean difference between the two conditions is statistically significant:
 
-* Null Hypothsis, H0 - The incongruent words will have no significant effect in the time taken to recognize and say the color than the time taken for congruent words.
+* Null Hypothesis, H0 - The incongruent words will have no significant effect in the time taken to recognize and say the color than the time taken for congruent words.
 * Alternate Hypothesis, H1 - The incongruent words will result in significantly increased time to recognize and say the color than the time taken for congruent words.
 
-H0: μi ≤ μc (μi - population mean of incongruent values, μc - population mean of congruent values)
+H0:  $\bar{x}_i<=\bar{x}_c$ ($\bar{x}_i$ - population mean of incongruent values, $\bar{x}_c$ - population mean of congruent values)
 
-H1: μi > μc (μi - population mean of incongruent values, μc - population mean of congruent values)
+H1: $\bar{x}_i > \bar{x}_c$ ($\bar{x}_i$ - population mean of incongruent values, $\bar{x}_c$ - population mean of congruent values)
+
+#### Statistical test choices and assumptions: 
+
+* 95% confidence interval
+* Paired one tail t-test -> with two tests per participant this test show if the mean of incongruent words is statistically significantly different from the congruent words at an alpha of 0.05.
+
+For this study, it is better suited to perform a two-sided t-test instead of a z-test because :
+
+  1. We need to address the uncertainty in sample standard error resulted from the unknown population standard deviation
+  2. We are comparing the means of two groups that are dependent
+  3. The same subject is involved under both the conditions.
 
 ### (3) Report some descriptive statistics regarding this dataset. Include at least one measure of central tendency and at least one measure of variability.
 
-sample size = 24
+Sample size = 24
 
 ```{r}
 df <- read.csv('stroopdata.csv')
-
 df
 ```
 
@@ -50,23 +57,31 @@ df
 
 First, lets tidy the data such that each variable is a column, and each observation is a row (store it as cleandf) to make the visulization easier. [4]
 
-```{r}
+```{r message=FALSE}
 library(tidyr)
 library(dplyr)
 
 dftemp <- mutate(df, subject=1:nrow(df))
 cleandf <- gather(dftemp, congruency, time, -subject)
+```
 
+Measure of central tendency and measure of variability. 
+
+```{r}
 cleandf %>%
   group_by(congruency) %>% 
   summarise(mean(time),median(time),sd(time),var(time))
 ```
 
+The median is a better measure of central tendency since the distribution is slighly skewed.
+
+# Visualizations
+
 ### (4) Provide one or two visualizations that show the distribution of the sample data. Write one or two sentences noting what you observe about the plot or plots.
 
 The distribution of data from both congruent and incongruent conditions can be visualised using boxplot and smoothed histogram(Kernel density plot)
 
-```{r}
+```{r, fig.width=15, fig.height=10, bootstrap.thumbnail.size="col-md-9"}
 library(ggplot2)
 
 ggplot(data = cleandf, aes(x = subject, y = time, color = congruency)) +
@@ -75,25 +90,35 @@ ggplot(data = cleandf, aes(x = subject, y = time, color = congruency)) +
 
 From the boxplot, there are two outliers or extraneous data which skews the mean of incongruent values.
 
-```{r}
+```{r, fig.width=15, fig.height=10, bootstrap.thumbnail.size="col-md-9"}
 ggplot(data = cleandf, aes(x = time, fill = congruency)) +
-  geom_density()
+  geom_density(alpha = 0.5)
 ```
 
 In the kernel density plot, although both graphs visually appear somewhat positively skewed, the mean is pretty close to the peak in both graphs which indicates a normal distribution.
 
-```{r}
-ggplot(data = cleandf, aes(x = time, fill = congruency)) +
+```{r, fig.width=15, fig.height=10, bootstrap.thumbnail.size="col-md-9"}
+ggplot(data = cleandf, aes(x = time, fill = congruency, color = congruency)) +
   geom_histogram(alpha = 0.5, binwidth = 1)
 ```
 
+# Results
+
 ### (5) Now, perform the statistical test and report your results. What is your confidence level or Type I error associated with your test? What is your conclusion regarding the hypotheses you set up? Did the results match up with your expectations? Hint: Think about what is being measured on each individual, and what statistic best captures how an individual reacts in each environment.
 
+Mean difference
+
+
+
 ```{r}
-t.test(df$Congruent, df$Incongruent)
+t.test(df$Congruent, df$Incongruent, paired = TRUE, alternative = "two.sided", conf.level = 0.95)
 ```
 
-The two-tailed P value is less than 0. this difference is considered to be extremely statistically significant. The mean of Congruent minus Incongruent ~ -7.96479. The 95% confidence interval of this difference: from -10.42 to -5.5 This indicates that the null hypothesis can be rejected, which goes to state that the Stroop effect exists.
+# Conclusion
+
+The result from the two-sided pairted-t test is as below: 
+
+The confidence level is $\alpha$=0.05, the critical statistic value is t=−8.0207. The P-value is less than 0.00001. The result is significant at p < 0.05%. This difference is considered to be extremely statistically significant. The mean of Congruent minus Incongruent ~ -7.96479. The 95% confidence interval of this difference: from -10.01 to -5.91 indicates that the null hypothesis can be rejected, which goes to state that it takes a longer time to read words under incongruent condition than under congruent condition.
 
 ### (6) What do you think is responsible for the effects observed? Can you think of an alternative or similar task that would result in a similar effect? Some research about the problem will be helpful for thinking about these two questions!
 
@@ -101,7 +126,7 @@ The following theories explain the effects observed[1]:
 
 * Processing speed: This theory suggests there is a lag in the brain's ability to recognize the color of the word since the brain reads words faster than it recognizes colors
 
-* Selective attention:The Selective Attention Theory suggests that color recognition, as opposed to reading a word, requires more attention. The brain needs to use more attention to recognize a color than to encode a word, so it takes a little longer.[17] The responses lend much to the interference noted in the Stroop task. This may be a result of either an allocation of attention to the responses or to a greater inhibition of distractors that are not appropriate responses. 
+* Selective attention:The Selective Attention Theory suggests that color recognition, as opposed to reading a word, requires more attention. The brain needs to use more attention to recognize a color than to encode a word, so it takes a little longer. The responses lend much to the interference noted in the Stroop task. This may be a result of either an allocation of attention to the responses or to a greater inhibition of distractors that are not appropriate responses. 
 
 * Automaticity:  It suggests that since recognizing colors is not an "automatic process" there is hesitancy to respond; whereas, the brain automatically understands the meaning of words as a result of habitual reading. This idea is based on the premise that automatic reading does not need controlled attention, but still uses enough attentional resources to reduce the amount of attention accessible for color information processing. This is the most common theory of the Stroop effect.
 
@@ -111,9 +136,12 @@ The Simon effect is a similar task which would result in a similar effect. [2]
 
 In Simon's original study, two lights (the stimulus) were placed on a rotating circular panel. This device would be rotated at varying degrees (away from the horizontal plane). Simon wished to see if an alteration of the spatial relationship, relative to the response keys, affected performance. Age was also a probable factor in reaction time. As predicted the reaction time of the groups increased based on the relative position of the light stimulus (age was not a factor). The reaction time increased by as much as 30%. (Simon & Wolf, 1963). 
 
-#### References
+# References
 
-[1] https://en.wikipedia.org/wiki/Stroop_effect#Theories
-[2] https://en.wikipedia.org/wiki/Simon_effect
-[3] https://ggplot2.tidyverse.org/
-[4] https://tidyr.tidyverse.org/
+[1] https://en.wikipedia.org/wiki/Stroop_effect#Theories 
+
+[2] https://en.wikipedia.org/wiki/Simon_effect 
+
+[3] https://ggplot2.tidyverse.org/ 
+
+[4] https://tidyr.tidyverse.org/ 
