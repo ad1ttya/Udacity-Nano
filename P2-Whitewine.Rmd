@@ -1,0 +1,876 @@
+---
+pagetitle: "Wine Quality - Exploratory Data Analysis"
+title: "<center> <img src ='https://image.flaticon.com/icons/svg/209/209118.svg'/> </center> White Wine Quality - Exploratory Data Analysis"
+monofont: "Fira Code"
+output: 
+   prettydoc::html_pretty:
+    theme: leonids
+    highlight: github
+    df_print: paged
+---
+
+<link rel="stylesheet" href="https://cdn.rawgit.com/tonsky/FiraCode/1.205/distr/fira_code.css">
+
+<style type="text/css"> 
+.sourceCode { 
+    font-family: Fira Code Retina; 
+} 
+.cover {
+background-color: rgba(31, 31, 31, 1)
+}
+
+.cover-card .author_name {
+color : rgba(136, 219, 246, 1)
+}
+
+th {
+background-color: rgba(0, 175, 214, 1)
+}
+
+.pagedtable-header-type {
+color : rgba(214, 214, 214, 1)
+}
+
+h2, h3 {
+color: rgba(0, 175, 214, 1)
+}
+
+</style>
+
+# White Wine Quality - Exploratory Data Analysis
+
+<b>Adittya
+September 2018</b>
+
+## Dataset Overview
+
+Wine quality, as Maynard Amerine once said, is easier to detect than define [1]. This is partially due to quality being primarily subjective, and strongly influenced by extrinsic factors. The quality of wine is the result of a complex set of interactions, which include geological and soil variables, climate, and many viticultural decisions. Most serious wine connoisseurs tend to agree on what constitutes wine quality, that is, what they subjectively have come to like through extensive tasting.
+
+In this exploratory analysis we try to determine which chemical properties influence the quality of white wines? 
+
+```{r echo=FALSE, message=FALSE}
+#loading the packages required for the EDA.
+
+library(ggplot2)
+library(hrbrthemes)
+library(plotly)
+library(dplyr)
+library(Hmisc)
+library(knitr)
+library(kableExtra)
+library(rbokeh)
+library(RColorBrewer)
+library(PerformanceAnalytics)
+library(ggcorrplot)
+library(mixtools)
+```
+
+The dataset used covers white wines from Portugal [2]:
+
+For each wine, an expert-derived quality score on a scale of 0 (very bad) to 10 (very excellent) was provided. In addition to the quality score, the dataset contains a measurement for 11 chemical properties of each wine, as will be described later.
+
+First, Lets look at the data provided in the dataset.
+
+```{r echo=FALSE, message=FALSE}
+#load the data and view the variables in the dataset
+
+data <- read.csv("D:\\Datasets\\wineQualityWhites.csv")
+
+str(data)
+```
+
+
+There are 4,898 observations and each observation has 12 variables of interest (excluding the column X as it is simply a sequential count for each observation)
+
+## Univariate Plots Section
+
+In this section, we are going to use univariate plots to analyze the data. First, let’s take a look at the variables’ meaning and some descriptive statistics.
+
+There are 11 chemical properties (e.g fixed acidity, volatile acidity etc.) and 1 measure of quality. The main feature in the dataset is 'quality', and it the variable that we would like to predict.
+
+The first thing we need to understand is that the quality(our response variable) is scored between between 0 (very bad) and 10 (very excellent).
+
+Before that we will need to drop the 'X' variable and check if there are any missing values in the dataset. 
+
+```{r}
+# with the below code, we remove the unnecessary vairable 'X' and check if there are any 'NA' values in any of the 11 columns.
+
+data <- data <- subset(data,select = -c(X))
+
+na_count <- sapply(data, function(x) sum(length(which(is.na(x)))))
+```
+
+```{r, echo=FALSE}
+#check the NA count for all the columns in the dataset and print to a talbe
+t(na_count) %>%
+  kable(col.names = c("f.acidity", "v.acidity", "citric.acid", "res.sugar", "chlorides", "free.sulfur", "total.sulfur", "density", "pH", "sulphates", "alcohol", "quality")) %>%
+  kable_styling()
+```
+
+
+All columns report a value of 0 and hence there are no missing values.
+
+A statistical summary of the data is given below:
+
+```{r echo=FALSE}
+#function to create summary stats for all columns in a dataset
+data.summary <- function(x) {
+  c(Minimum=min(x),
+  Mean=mean(x),
+  Median=median(x),
+  Maximum=max(x),
+  Variance=var(x))
+}
+
+stats <- apply(data,2,data.summary) %>% t(.) #t(.) to transpose the output
+kable(stats)
+```
+
+We can see that resiudual sugar and sulphur dioxide have a hight amount of variance, while density has the lowest amount of variance.
+
+Additionally, we can notice that the quality column consists of integer values and the minimum rating of the wine is 3 and the maximum rating of the wine is 9. It is interesting to note that none of the wines received either a perfect quality score (10) or poor quality score (0). Since quality is a categorical variable (for which the possible values are ordered) we need to transform the variable into an ordered categorical variable.
+
+```{r}
+#create a new column qulaity.factor with the values as factors instead of numbers
+data$quality.factor <- ordered(data$quality)
+
+summary(data$quality.factor)
+```
+
+We can see that there are very few samples for quality level 3 (only 20) and even less samples for quality level 9 (only 5). This dearth of data at very low and very high quality scores might make it difficult to draw any statistically significant conclusions about the extremes of the quality scale.
+
+### Histograms
+
+We can use histograms, which is the most commonly used graph to show frequency distributions. We will group the 12 features into two groups of histograms (one based on acidity, and the second based on other factors).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# a helper variable for acidity related columns
+acidity <- c("fixed.acidity", "volatile.acidity", "citric.acid", "pH")
+
+# function to create histograms for acidity related columns
+histograms <- apply(subset(data,select = acidity), 2,
+                   function(x){
+                       figure(title= NULL, xlab = colnames(x), 
+                              width = 400, height = 250) %>%
+                       ly_hist(x,breaks = 40, freq = FALSE, 
+                               color=brewer.pal(9, "GnBu")) %>%
+                       ly_density(x)})
+
+grid_plot(histograms, nrow=2, width = 900, height = 600)
+```
+
+The above four parameters (which are all related to acidity) are all normally distributed with some positive skewing.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# function to create histograms for all columns except the factor and acidity related varibles
+histograms1 <- apply(subset(data,select = -c(quality.factor, fixed.acidity, volatile.acidity, citric.acid, pH)), 2, 
+                   function(x){
+                       figure(title= NULL, xlab = colnames(x), 
+                              width = 400, height = 250) %>%
+                       ly_hist(x,breaks = 40, freq = FALSE, 
+                               color=brewer.pal(9, "Purples")) %>%
+                       ly_density(x)})
+
+grid_plot(histograms1, nrow=4, width = 900, height = 600)
+```
+
+Looking at the other histograms, we can observe that the residual sugar is not normally distributed and is very highly skewed and aclohol appears to have a trimodal distribution. The rest of the plots have a normal distribution with small psoitive skewness.
+
+At the next section, we will need to exclude the top 1% values for these paraments and apply transformation if necessary.
+
+### Box Plots
+
+Box plots are a great way to show the distibution, variance and outliers.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# function to create boxplots for all columns (except factor)
+boxplots <- apply(subset(data, select = -c(quality.factor)), 2,
+  function(x){figure(title= NULL, 
+                     xlab = colnames(x),ylab=NULL) %>%
+            ly_boxplot(x,breaks = 40,
+                       color="turquoise",alpha=0.7, 
+                       freq = FALSE)})
+
+grid_plot(boxplots, nrow=2, width = 900, height = 600)
+```
+
+From the boxplots,we can see that Fixed Acidity, Volatile Acidity, Critic Acid, Chlorides, Free Sulfur Dioxide, Total sulfur dioxide, pH and Sulphates have many outliers. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#barplot for the quality column
+barqual <- figure(width = 900, height = 600, xlab = "Quality (score between 0 and 10)") %>%
+  ly_bar(x = quality.factor, data = data, fill_color = "turquoise", alpha = 0.8, xlab = "Quality (score between 0 and 10)") 
+
+barqual
+```
+
+The quality rating seems to be normally distributed, and with  most of ratings in the middle bins (5, 6 and 7). 
+
+### Dealing with outliers
+
+Since we have outliers, it makes sense to plot the data again, but with the top percentile removed, to see if there are any changes in the distribution. In this case, the top 1% seems to be the outlier. We can ignore the quality variable for this plot as the 9 rating will be misrepresented as an outlier.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# funciton to create boxplots for all columns once the top percentile is removed
+boxplots1 <- apply(subset(data, select = -c(quality.factor, quality)), 2,
+  function(x){figure(title= NULL, 
+                     xlab = colnames(x),ylab=NULL) %>%
+            ly_boxplot(x [x < quantile(x, 0.99)],breaks = 40,
+                       color="turquoise",alpha=0.8, 
+                       freq = FALSE)})
+
+grid_plot(boxplots1, nrow=2, width = 900, height = 600)
+```
+
+Let us concentrate on the variables volatile.acidity, citric.acid, residual.sugar, chlorides and look at their distribution once the top 1 percentile is removed. We can see that all these variables have a normal distribution apart from residual sugar which seems to be a bi-modal distribution.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# function to create histograms once the top percentile is removed
+histograms2 <- apply(subset(data,select = c(volatile.acidity, citric.acid, residual.sugar, chlorides)), 2,
+                   function(x){
+                       figure(title= NULL, xlab = colnames(x), 
+                              width = 400, height = 250) %>%
+                       ly_hist(x [x < quantile(x, 0.99)],breaks = 40, freq = FALSE, 
+                               color=brewer.pal(9, "GnBu")) %>%
+                       ly_density(x [x < quantile(x, 0.99)])})
+
+grid_plot(histograms2, nrow=2, width = 900, height = 600)
+```
+
+Concentrating closer on residual sugar, we can clearly see that the data has bi-modal distribution once we apply a log transformation. It is inconclusive at this moment whether this influences the quality of wine, but we can say that there are two different groups of wine (one with low residual sugar and other with high residual sugar) or two different techniques of wine production. The reason for the bi-modal distribution can be that there are two sets of white wines (dry and very dry) [5].  We will later explore if the residual sugar changes according to any of the other variables.
+
+The alcohol content is interesting, possibly exhibiting bimodal or even trimodal behavior. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#density plot for residual.sugar
+res.sugar <- figure(width = 400, height = 150, title = "Density plot of residual.sugar after applying log transformation", xlab = "log(residual sugar (g / dm^3))") %>%
+  ly_hist(log(residual.sugar), data = data[data$residual.sugar < quantile(data$residual.sugar, 0.99), ], freq = FALSE, color = "turquoise") %>%
+  ly_density(log(residual.sugar), data = data[data$residual.sugar < quantile(data$residual.sugar, 0.99), ])
+
+#density plot for alcohol
+alcohol.plot <- figure(width = 400, height = 150, title = "Density plot of alcohol", xlab = "alcohol (% by volume)") %>%
+  ly_hist(alcohol, data = data[data$alcohol < quantile(data$alcohol, 0.99), ], freq = FALSE, color = "turquoise") %>%
+  ly_density(alcohol, data = data[data$alcohol < quantile(data$alcohol, 0.99), ])
+
+grid_plot(list(res.sugar, alcohol.plot), width = 900, height = 600, ncol = 2)
+```
+
+We can observe the sub-populations using Gaussian Mixture Model [6]:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, results='hide'}
+#' Plot a Mixture Component
+#' 
+#' @param x Input data
+#' @param mu Mean of component
+#' @param sigma Standard deviation of component
+#' @param lam Mixture weight of component
+plot_mix_comps <- function(x, mu, sigma, lam) {
+  lam * dnorm(x, mu, sigma)
+}
+
+set.seed(1)
+
+quantdata <- data[data$residual.sugar < quantile(data$residual.sugar, 0.99), ]
+
+res <- quantdata$residual.sugar
+mixmdl <- normalmixEM(res, k = 2)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+#plot the mixed model by creating a dataframe from mixmdl
+plot.sugar.modes <- data.frame(x = mixmdl$x) %>%
+  ggplot() +
+  geom_histogram(aes(x, ..density..), binwidth = .5, alpha = 0.7, 
+                 fill = "turquoise") +
+  stat_function(geom = "line", fun = plot_mix_comps,
+                args = list(mixmdl$mu[1], mixmdl$sigma[1], lam = mixmdl$lambda[1]),
+                colour = "white", lwd = 1) +
+  stat_function(geom = "line", fun = plot_mix_comps,
+                args = list(mixmdl$mu[2], mixmdl$sigma[2], lam = mixmdl$lambda[2]),
+                colour = "skyblue", lwd = 1) +
+  ylab("Density") +
+  xlab("Residual Sugar (g / dm^3)") +
+  ggtitle("Mixture Model clustering of residual sugar") +
+  theme_modern_rc()
+
+ggplotly(plot.sugar.modes) %>%
+  layout(dragmode = "pan")
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, results='hide'}
+#now, repeat the same for mixel model clustering for alcohol
+set.seed(1)
+
+quantdata.a <- data[data$alcohol < quantile(data$alcohol, 0.99), ]
+
+res <- quantdata$alcohol
+mixmdl <- normalmixEM(res, k = 3)
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+plot.alcohol.modes <- data.frame(x = mixmdl$x) %>%
+  ggplot() +
+  geom_histogram(aes(x, ..density..), binwidth = 0.3, alpha = 0.7, 
+                 fill = "turquoise") +
+  stat_function(geom = "line", fun = plot_mix_comps,
+                args = list(mixmdl$mu[1], mixmdl$sigma[1], lam = mixmdl$lambda[1]),
+                colour = "white", lwd = 1) +
+  stat_function(geom = "line", fun = plot_mix_comps,
+                args = list(mixmdl$mu[2], mixmdl$sigma[2], lam = mixmdl$lambda[2]),
+                colour = "black", lwd = 1) +
+  stat_function(geom = "line", fun = plot_mix_comps,
+                args = list(mixmdl$mu[3], mixmdl$sigma[3], lam = mixmdl$lambda[3]),
+                colour = "cyan", lwd = 1) +
+  ylab("Density") +
+  xlab("Alcohol (% by volume)") +
+  ggtitle("Mixture Model clustering of Alcohol") +
+  theme_modern_rc()
+
+ggplotly(plot.alcohol.modes) %>%
+  layout(dragmode = "pan")
+```
+
+
+
+### Creating new variables
+
+I created three new variables for exploratory analyisis. The variables were created as a few online articles [3, 4] suggested that the residual sugar levels are adjusted based on the acidity levels of the wine.
+
+Since there are three acidity based variables (I ignored citric acid as its contains a few zeroes and leads to infinity results), lets visulize the distribution of the ratio of residual sigar with regard to volatile.acidity, fixed.acidity and pH.
+
+The Summary stats of the sugar to acidity ratio:
+
+```{r, echo=FALSE}
+#create new variables for exploring the sugar to acidity ratios
+data$sugar.to.v.acidity <- with(data, residual.sugar / volatile.acidity)
+data$sugar.to.f.acidity <- with(data, residual.sugar / fixed.acidity)
+data$sugar.to.pH <- with(data, residual.sugar / pH)
+
+summary(subset(data, select = c(sugar.to.v.acidity, sugar.to.f.acidity, sugar.to.pH)))
+```
+
+From the below visualuzations, we can see that they have a bi-modal or tri-modal distribution.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# funciton to create histograms for the sugar to acidity ratios
+sugar.ratio <- apply(subset(data,select = c(sugar.to.v.acidity, sugar.to.f.acidity, sugar.to.pH)), 2,
+                   function(x){
+                       figure(title= NULL, xlab = colnames(x), 
+                              width = 400, height = 250) %>%
+                       ly_hist(x [x < quantile(x, 0.99)],breaks = 40, freq = FALSE, 
+                               color=brewer.pal(9, "GnBu")) %>%
+                       ly_density(x [x < quantile(x, 0.99)])})
+
+grid_plot(sugar.ratio, ncol=3, width = 1200, height = 600)
+```
+
+
+## Univariate Analysis
+
+* The most important variable is our target variable: the quality of the wine. Of the 7 qualities which appear in this dataset: 3,4,5,6,7,8 and 9, more than 90% of the data falls in 5,6,7.
+
+* I observed that most of the data is normally distributed with positive skewness. Upon removing the top percentile and applying log transformation (for residual sugar) I observed that most of the features have normal distribution and residual sugar and alochol have a bi-modal dsitribution. 
+
+* It might be interesting to explore the residual sugar to acidity (pH, fixed.acidity, volatile.acidity, citric.acid) ratio and its influence on quality, since I read studies [3, 4] that indicate sweetness reduces the sensation of acidity in wine, and this might have a factor in the quality of the wine.
+
+* Three new variables were created to explore the sugar to acidity ratio.
+
+## Bivariate Plots Section
+
+Let us start the bivariate analysis by exploring the relationship between the variables. We will group the values based on the quality and see if there are any noticables changes in the mean values of other variables.
+
+```{r echo=FALSE}
+# arrange the data by quality and display mean for each quality
+subset(data, select = -c(quality)) %>%
+  group_by(quality.factor) %>%
+  summarise_all(funs(mean))
+```
+
+We can see that the mean values of alcohol and pH increases with quality, and the mea values of total.sulphur.dioxide and chlorides decreases with increase in qulaity.
+
+### Correlation Plot & Scatterplot Matrix
+
+Let us visualize the relationships with a correlation plot and scatterplot matrix.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#find correlation using pearson method
+corr <- cor(subset(data, select = -c(quality.factor, sugar.to.v.acidity, sugar.to.f.acidity, sugar.to.pH)), method = "pearson")
+```
+
+It is very useful to highlight the most correlated variables in a data table. In this plot, correlation coefficients is colored according to the value.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=12, fig.height=8}
+#generate a correlation matrix
+ggcorrplot(corr, hc.order = TRUE, # using hierarchical clustering
+           type = "lower", # Get the lower triangle
+           lab = TRUE, # display correlation coefficients
+           lab_col = "black", # color of correlation coefficients
+           outline.color = "turquoise", # outline color for correlation coefficients
+           colors = c("green", "cyan","blue"), # colors to indicate levels of correlation from negative to postive
+           lab_size = 3, # text size for correlation coefficients
+           method="square", # Visualize the correlation matrix using squares
+           show.legend = TRUE, legend.title = "correlation", 
+           title="Correlarion Plot",
+           theme_modern_rc())
+```
+
+We will look at the scatterplots in two groups as there are too many variables (with both groups involving quality as it is our main interest). This is useful for looking at all possible two-way interactions or correlations between dimensions and will allow us to get a sense as to whether there are trends between various variables in the dataset. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+# Genenrate a correlation plot for the first 5 columns against quality
+chart.Correlation(subset(data, select = c(12,1:5)), histogram=TRUE, pch=19)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+# Genenrate a correlation plot for the columns 6 to 11 against quality
+chart.Correlation(subset(data, select = c(12,6:11)), histogram=TRUE, pch=19) 
+```
+
+* The higher qualities (8 and especially 9) have less variance for most of the other variables.
+* There is a meaningful positive relationship between quality and alcohol.
+* Alcohol has a strong negative correlation and a linear relationship with density.
+* Residual sugar and density has a strong positive correlation.
+
+We will take a look at some interesting relations:
+
+#### 1. Density and Residual Sugar
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+# Scatterplot for residual.sugar against density
+viz <- ggplot(data = data, aes(x = residual.sugar, y = density)) +
+  geom_point(color = "deepskyblue1", alpha = 0.4) +
+  ylim(quantile(data$density,0.01),
+       quantile(data$density,0.99)) +
+  xlim(quantile(data$residual.sugar,0.01),
+       quantile(data$residual.sugar,0.99)) +
+  geom_smooth(method = 'lm', se = FALSE) +
+  ylab("Density (g / cm^3)") +
+  xlab("Residual Sugar (g / dm^3)") +
+  theme_modern_rc() + 
+  ggtitle("Density and Residual Sugar") 
+
+ggplotly(viz)
+```
+
+It can be observed that there is a strong-positive relationship between density and residual sugar. As the amount of residual sugar increases, so thus the density in the wine.
+
+#### 2. Alcohol and Density
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+# Scatterplot for alcohol against density
+viz1 <- ggplot(data = data, aes(x = alcohol, y = density)) +
+  geom_point(color = "deepskyblue1", alpha = 0.2) +
+  ylim(quantile(data$density,0.01),
+       quantile(data$density,0.99)) +
+  xlim(quantile(data$alcohol,0.01),
+       quantile(data$alcohol,0.99)) +
+  geom_smooth(method = 'lm', se = FALSE) +
+  ylab("Density (g / cm^3)") +
+  xlab("Alcohol (% by volume)") +
+  theme_modern_rc() + 
+  ggtitle("Alcohol and Density") 
+
+ggplotly(viz1)
+```
+
+There appears to be a strong negative relation between alcohol and density, as the density of the wine decreases with increase in alcohol content.
+
+#### Quality and Sugar to acidity ratios
+
+Lets explore if the newly created variables (sugar to acidity ratios) have any influence on the quality of the wine.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=9}
+# boxplots for sugar to acidity ratios against quality
+
+quality.and.sugar.to.v.acidity <- ggplot(data = data, aes(y = sugar.to.v.acidity, x = quality.factor)) +
+  geom_boxplot(fill = "turquoise", color = "cyan", alpha = 0.7, outlier.fill = 'white', outlier.alpha = 0.5) +
+  theme_modern_rc() +
+  ylim(quantile(data$sugar.to.v.acidity,0.01),
+       quantile(data$sugar.to.v.acidity,0.99))
+
+quality.and.sugar.to.f.acidity <- ggplot(data = data, aes(y = sugar.to.f.acidity, x = quality.factor)) +
+  geom_boxplot(fill = "turquoise", color = "cyan", alpha = 0.7, outlier.fill = 'white', outlier.alpha = 0.5) +
+  theme_modern_rc() +
+  ylim(quantile(data$sugar.to.f.acidity,0.01),
+       quantile(data$sugar.to.f.acidity,0.99))
+
+quality.and.sugar.to.pH <- ggplot(data = data, aes(y = sugar.to.pH, x = quality.factor)) +
+  geom_boxplot(fill = "turquoise", color = "cyan", alpha = 0.7, outlier.fill = 'white', outlier.alpha = 0.5) +
+  xlab("Quality (score between 0 and 10)") +
+  theme_modern_rc() +
+  ylim(quantile(data$sugar.to.pH,0.01),
+       quantile(data$sugar.to.pH,0.99))
+
+plotly::subplot(quality.and.sugar.to.v.acidity, quality.and.sugar.to.f.acidity, quality.and.sugar.to.pH, nrows = 3, shareX = TRUE, titleY = TRUE) %>%
+  hide_legend()
+```
+
+It appears that all three graphs have the same common theme being that higher quality wines have less sugar to acidity ratio, however it is still inconclusive as the median do move up and down (especially between ratings 3-5).
+
+#### Quality with relation to Alcohol, Chlorides, Density and Volatile Acidity
+
+From the correlation plot in the beginning of the section, we observed that alcohol, density, chlorides and volatile acidity may have some influence on the taste of the wine. Let us further explore this:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=14}
+#boxplot for quality and alcohol
+quality.and.alcohol <- ggplot(data = data, aes(y = alcohol, x = quality.factor)) +
+  geom_boxplot(fill = "turquoise", color = "cyan", alpha = 0.7, outlier.fill = 'white', outlier.alpha = 0.5) +
+  ylab("Alcohol (%)") +
+  theme_modern_rc() +
+  ylim(quantile(data$alcohol,0.01),
+       quantile(data$alcohol,0.99))
+
+#boxplot for quality and chlorides
+quality.and.chlorides <- ggplot(data = data, aes(y = chlorides, x = quality.factor)) +
+  geom_boxplot(fill = "turquoise", color = "cyan", alpha = 0.7, outlier.fill = 'white', outlier.alpha = 0.5) +
+  ylab("Chlorides (g / dm^3)") +
+  theme_modern_rc() +
+  ylim(quantile(data$chlorides,0.01),
+       quantile(data$chlorides,0.99))
+
+#boxplot for quality and density
+quality.and.density <- ggplot(data = data, aes(y = density, x = quality.factor)) +
+  geom_boxplot(fill = "turquoise", color = "cyan", alpha = 0.7, outlier.fill = 'white', outlier.alpha = 0.5) +
+  ylab("Density ((g / cm^3))") +
+  theme_modern_rc() +
+  ylim(quantile(data$density,0.01),
+       quantile(data$density,0.99))
+
+#boxplot for quality and volatile.acidity
+qulaity.and.volatile.acidity <- ggplot(data = data, aes(y = volatile.acidity, x = quality.factor)) +
+  geom_boxplot(fill = "turquoise", color = "cyan", alpha = 0.7, outlier.fill = 'white', outlier.alpha = 0.5) +
+  ylab("volatile acidity (g / dm^3)") +
+  xlab("Quality (score between 0 and 10)") +
+  theme_modern_rc() +
+  ylim(quantile(data$volatile.acidity,0.01),
+       quantile(data$volatile.acidity,0.99))
+
+plotly::subplot(quality.and.alcohol, quality.and.chlorides, quality.and.density, qulaity.and.volatile.acidity, 
+                nrows = 4, shareX = TRUE, titleY = TRUE) %>%
+  hide_legend()
+```
+
+* While there are a few ups and downs, there is a general increase in quality with increase in alcohol content.
+* The chloride levels appear to be decreasing at the higher quality levels.
+* The relationship between density and quality appears to be moderately strong, i.e higher quality wines appear to be of lower density compared to lower quality wines 
+* There does not seem to be a strong trend between quality and volatile acidity as the acidity levels fluctuate up and down through the different quality levels.
+
+Since we know that residual.sugar has a bi-modal distribution, let us address each mode seprately and see if they have any influence on the quality. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+quality.and.sugar2 <- ggplot(aes(y = residual.sugar, x = quality.factor), data = subset(
+  data,data$residual.sugar < quantile(
+    data$residual.sugar,0.99) & data$residual.sugar > 4.1), alpha = 0.7) +
+  geom_boxplot(fill = "cyan", alpha = 0.7, color = "cyan") +
+  ylab("residual sugar (g / dm^3)") +
+  xlab("Quality (score between 0 and 10)") +
+  scale_y_log10(breaks=4:10) +
+  ggtitle("Boxplot of each mode for residual sugar") +
+  theme_modern_rc() 
+
+quality.and.sugar1 <- ggplot(aes(y = residual.sugar, x = quality.factor), data = subset(
+  data,data$residual.sugar < quantile(
+    data$residual.sugar,0.99) & data$residual.sugar <= 4.1), alpha = 0.7) +
+  geom_boxplot(fill = "turquoise", alpha = 0.7, color = "cyan") +
+  ylab("residual sugar (g / dm^3)") +
+  scale_y_log10(breaks=1:4) +
+  theme_modern_rc() 
+  
+plotly::subplot(quality.and.sugar1, quality.and.sugar2, nrows = 2, shareX = TRUE, titleY = TRUE, titleX = TRUE) %>%
+  hide_legend()
+```
+
+We can clearly see a difference between the two modal groups in relation to the quality of wine.
+
+## Bivariate Analysis
+
+We have found some strong and moderate relations between few variables as observed in the correlation plots and boxplots:
+
+* In the Density and Residual Sugar plot, we observed that the amount of residual sugar has a strong relation with the density. This is the strongest relation between the variables in this dataset.
+* In the Alcohol and Density plot, we visualized the strong negative correlation between Alcohol and Density.
+* From the quality boxplots, we observed that the quality increases with increase in alcohol, while chlorides and density decreases with increase in quality.
+* The sugar to acidity ratios do not have a strong relation with quality, and we will not further explore this.
+* For the amount of residual sugar 1 to 4 we can see that the quality increases with increase in residual sugar. However, for the amount of residual sugar greater than 4 the quality decreases with increase in residual sugar. This could indicate that people have given high quality ratings for white wine with less residual sugar (1 to 4 usually found in <b>very</b> dry wines [5]). The other group with more residual sugar (greater than 4; dry and sweeter wines) had received ratings differenlty.
+
+## Multivariate Plots Section
+
+Based on the previous analysis, I selected a few interesting variables to explore if they influence the quality of the wine.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+density.and.sugar <- ggplot(aes(x = residual.sugar, y = density,color=quality.factor), data = data) +
+  geom_point(alpha = 1, size = 1, position = 'jitter') +
+  geom_smooth(method = "lm", 
+               se = FALSE,size=1) +
+  scale_color_brewer(type = 'seq',
+    guide = guide_legend(title = 'Quality', reverse = F,
+    override.aes = list(alpha = 1, size = 2))) +
+  xlim(quantile(data$residual.sugar,0.01),quantile(data$residual.sugar,0.99)) +
+  ylim(quantile(data$density,0.01),quantile(data$density,0.99)) +
+  ylab("Density (g / cm^3)") +
+  xlab("Residual Sugar (g / dm^3)") +
+  ggtitle('Density by Residual Sugar (Double-click on legend to isolate qulaity)') + 
+  theme_modern_rc()
+
+ggplotly(density.and.sugar)
+```
+
+By isolating the high qulaity factors, we can see that higher qulaity wines have low density and low residual sugar.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+density.and.alcohol <- ggplot(aes(x = alcohol, y = density,color=quality.factor), data = data) +
+  geom_point(alpha = 1, size = 1, position = 'jitter') +
+  geom_smooth(method = "lm", 
+               se = FALSE,size=1) +
+  scale_color_brewer(type = 'seq',
+    guide = guide_legend(title = 'Quality', reverse = F,
+    override.aes = list(alpha = 1, size = 2))) +
+  xlim(quantile(data$alcohol,0.01),quantile(data$alcohol,0.99)) +
+  ylim(quantile(data$density,0.01),quantile(data$density,0.99)) +
+  ylab("Density (g / cm^3)") +
+  xlab("Alcohol (% by volume)") +
+  ggtitle('Density by Alcohol content (Double-click on legend to isolate qulaity)') + 
+  theme_modern_rc()
+
+ggplotly(density.and.alcohol)
+```
+
+By isolating the high qulaity factors, we can see that high quality wines have high alcohol content and low density.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+sugar.and.alcohol <- ggplot(aes(x = alcohol, y = residual.sugar,color=quality.factor), data = data) +
+  geom_point(alpha = 1, size = 1, position = 'jitter') +
+  geom_smooth(method = "lm", 
+               se = FALSE,size=1) +
+  scale_color_brewer(type = 'seq',
+    guide = guide_legend(title = 'Quality', reverse = F,
+    override.aes = list(alpha = 1, size = 2))) +
+  xlim(quantile(data$alcohol,0.01),quantile(data$alcohol,0.99)) +
+  ylim(quantile(data$residual.sugar,0.01),quantile(data$residual.sugar,0.99)) +
+  ylab("Residual Sugar (g / cm^3)") +
+  xlab("Alcohol (% by volume)") +
+  ggtitle('Residual Sugar by Alcohol content (Double-click on legend to isolate qulaity)') + 
+  theme_modern_rc()
+
+ggplotly(sugar.and.alcohol)
+```
+
+By isolating the high qulaity factors, we can see that high quality wines have high alcohol content and low residual sugar.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+facidity.and.pH <- ggplot(aes(x = fixed.acidity, y = pH,color=quality.factor), data = data) +
+  geom_point(alpha = 1, size = 1, position = 'jitter') +
+  geom_smooth(method = "lm", 
+               se = FALSE,size=1) +
+  scale_color_brewer(type = 'seq',
+    guide = guide_legend(title = 'Quality', reverse = F,
+    override.aes = list(alpha = 1, size = 2))) +
+  xlim(quantile(data$fixed.acidity,0.01),quantile(data$fixed.acidity,0.99)) +
+  ylim(quantile(data$pH,0.01),quantile(data$pH,0.99)) +
+  ylab("pH") +
+  xlab("fixed acidity (tartaric acid - g / dm^3)") +
+  ggtitle('Fixed acidity by pH (Double-click on legend to isolate qulaity)') + 
+  theme_modern_rc()
+
+ggplotly(facidity.and.pH)
+```
+
+There does not seem to be a relation between these variables.
+
+## Multivariate Analysis
+
+From the multivariate plots, we can see that there are relationships between Alcohol, density, residual sugar and the quality. So we can build a linear regression model to predict the quality of the wine.
+
+```{r}
+model.new <- lm(quality~alcohol+density+ residual.sugar, data=data)
+summary(model.new)
+```
+
+Seeing the above result, we cannot find any influence by the three variables as they consitute to only 20% of the variance.
+
+#### Transforming Quality to Low, Medium and High
+
+As observed in the initial sections, the number of observations of qualities 3, 4 and 9 are too low. This low number of samples on the extremes of the quality spectrum, it is possible that the dataset is being partitioned too finely. We can try and group the quality ratings into - Low(3-5), Medium(6) and High (7-9).
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE,}
+trans <- function(x) {
+  if(x < 6){
+    'Low'
+  }
+  else if(x < 7){
+    'Medium'
+  }
+  else 'High'
+}
+
+# apply the function to create a new categorical variable
+
+data$quality_levels <- ordered(
+  sapply(data$quality.factor,trans),levels=c('Low','Medium','High'))
+
+summary(data$quality_levels) %>%
+  t(.) %>%
+  kable()
+```
+
+Now we have more than 1000 observations under each category and this might help us to draw better conclusions.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=12}
+quality.and.alcohol1 <- ggplot(data = data, aes(y = alcohol, x = quality_levels)) +
+  geom_boxplot(fill = "turquoise", color = "cyan", alpha = 0.8, outlier.fill = 'white', outlier.alpha = 0.5) +
+  ylab("alcohol (% by volume)") +
+  theme_modern_rc() +
+  ylim(quantile(data$alcohol,0.01),
+       quantile(data$alcohol,0.99))
+
+quality.and.chlorides1 <- ggplot(data = data, aes(y = chlorides, x = quality_levels)) +
+  geom_boxplot(fill = "turquoise", color = "cyan", alpha = 0.8, outlier.fill = 'white', outlier.alpha = 0.5) +
+  ylab("chlorides (g / dm^3)") +
+  theme_modern_rc() +
+  ylim(quantile(data$chlorides,0.01),
+       quantile(data$chlorides,0.99))
+
+quality.and.density1 <- ggplot(data = data, aes(y = density, x = quality_levels)) +
+  geom_boxplot(fill = "turquoise", color = "cyan", alpha = 0.8, outlier.fill = 'white', outlier.alpha = 0.5) +
+  ylab("density (g / cm^3)") +
+  theme_modern_rc() +
+  ylim(quantile(data$density,0.01),
+       quantile(data$density,0.99))
+
+qulaity.and.residual.sugar1 <- ggplot(data = data, aes(y = residual.sugar, x = quality_levels)) +
+  geom_boxplot(fill = "turquoise", color = "cyan", alpha = 0.8, outlier.fill = 'white', outlier.alpha = 0.5) +
+  ylab("residual sugar (g / dm^3)") +
+  theme_modern_rc() +
+  ylim(quantile(data$residual.sugar,0.01),
+       quantile(data$residual.sugar,0.99))
+
+plotly::subplot(quality.and.alcohol1, quality.and.chlorides1, quality.and.density1, qulaity.and.residual.sugar1, 
+                nrows = 4, shareX = TRUE, titleY = TRUE, titleX = TRUE) %>%
+  hide_legend()
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+density.and.alcohol1 <- ggplot(aes(x = alcohol, y = density,color=quality_levels), data = data) +
+  geom_point(alpha = 1, size = 1, position = 'jitter') +
+  geom_smooth(method = "lm", 
+               se = FALSE,size=1) +
+  scale_color_brewer(type = 'seq',
+    guide = guide_legend(title = 'Quality', reverse = F,
+    override.aes = list(alpha = 1, size = 2))) +
+  ylab("Density (g / cm^3)") +
+  xlab("Alcohol (% by volume)") +
+  xlim(quantile(data$alcohol,0.01),quantile(data$alcohol,0.99)) +
+  ylim(quantile(data$density,0.01),quantile(data$density,0.99)) +
+  ggtitle('Density by Alcohol content (Double-click on legend to isolate qulaity)') +
+  theme_modern_rc() 
+
+sugar.and.alcohol1 <- ggplot(aes(x = alcohol, y = residual.sugar,color=quality_levels), data = data) +
+  geom_point(alpha = 1, size = 1, position = 'jitter') +
+  geom_smooth(method = "lm", 
+               se = FALSE,size=1) +
+  scale_color_brewer(type = 'seq',
+    guide = guide_legend(title = 'Quality', reverse = F,
+    override.aes = list(alpha = 1, size = 2))) +
+  ylab("residual sugar (g / dm^3)") +
+  xlab("Alcohol (% by volume)") +
+  xlim(quantile(data$alcohol,0.01),quantile(data$alcohol,0.99)) +
+  ggtitle('Residual Sugar by Alcohol content (Double-click on legend to isolate qulaity)') +
+  ylim(quantile(data$residual.sugar,0.01),quantile(data$residual.sugar,0.99)) + 
+  theme_modern_rc() 
+
+density.and.sugar1 <- ggplot(aes(x = residual.sugar, y = density,color=quality_levels), data = data) +
+  geom_point(alpha = 1, size = 1, position = 'jitter') +
+  geom_smooth(method = "lm", 
+               se = FALSE,size=1) +
+  scale_color_brewer(type = 'seq',
+    guide = guide_legend(title = 'Quality', reverse = F,
+    override.aes = list(alpha = 1, size = 2))) +
+  ylab("density (g / cm^3)") +
+  xlab("residual sugar (g / dm^3)") +
+  xlim(quantile(data$residual.sugar,0.01),quantile(data$residual.sugar,0.99)) +
+  ylim(quantile(data$density,0.01),quantile(data$density,0.99))  + 
+  ggtitle('Density by Residual Sugar (Double-click on legend to isolate qulaity)') +
+  theme_modern_rc() 
+
+ggplotly(density.and.alcohol1)
+ggplotly(sugar.and.alcohol1)
+ggplotly(density.and.sugar1)
+```
+
+
+
+With this transformation, we can finally observe some consistent trends in the data:
+
+* Higher quality wines have more alcohol content
+* Higher quality wines have less density
+* Higher quality wines contain less residual sugar
+
+## Final Plots and Summary
+
+There are three final plots that I have chosen which can show the most interesting things that I have found.
+
+### Plot One
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+ggcorrplot(corr, hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           lab_col = "black",
+           outline.color = "turquoise",
+           colors = c("green", "cyan","blue"),
+           lab_size = 3, 
+           method="square", 
+           show.legend = TRUE, legend.title = "correlation", 
+           title="Correlarion Plot",
+           theme_modern_rc()) 
+```
+
+
+### Description One
+
+The correlation plot enabled us to concentrate on the variables that warranted further anaylsis.
+
+### Plot Two
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+ggplotly(plot.sugar.modes)
+```
+
+### Description Two
+
+From this plot, we observed that residual sugar has sub-populations (one with >= 3 and other <= 4). This indicates that there are different categories of white wine based on the amount of residual sugar and people prefer white wine with less residual sugar(very dry wines).
+
+### Plot Three
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=11, fig.height=7}
+ggplotly(density.and.alcohol1)
+ggplotly(sugar.and.alcohol1)
+ggplotly(density.and.sugar1)
+```
+
+### Description Three
+
+This plot demonstrates that once wine quality is transformed into more coarse bins (i.e. ‘Low’,‘Medium’ and ‘High’ instead of numbers 3-9) then consistent trends emerge in the impact of various chemical properties on wine quality. 
+
+## Reflection
+
+It was a interesting exploration due to the amount of variables. My initial assumptions were that acidity and resiudual sugar (sugar to acidity ratio) will have a huge ipact on quality, which in the end was not true. I tried to incorporate different visualization libraries (rbokeh, ggplot, plotly) and it was a great learning experience. I struggled a lot to create plots in rbokeh layers using functions and the documentation [7] was somewhat helpful in this regard. The output size has gotten out of hand (>15 MB) due to the usage of too many visualization libraries. Howeverm the size is justified since this is not to be used in production and interactivity was required in the bi-variate and multi-variate plots. If need be, I will try and reduce the size of the report.
+
+From the information I learned regarding mixture models [6], I could further explore this dataset's bi-modal and tri-modal distributions and see each modes relation to the quality. I did not build any predictive models to the late submission of this project and would love to implement statistical learning techniques on this dataset. It would also be interesting to see if the red wine dataset returns similar results.
+
+## References
+
+[1] Nature and Origins of Wine Quality - Ronald S.Jackson https://doi.org/10.1016/B978-0-12-801813-2.00008-2
+
+[2] P. Cortez, A. Cerdeira, F. Almeida, T. Matos and J. Reis. Modeling wine preferences by data mining from physicochemical properties. In Decision Support Systems, Elsevier, 47(4):547-553. ISSN: 0167-9236.
+
+[3] Acidity in wine is important - Madeline Puckette https://winefolly.com/review/understanding-acidity-in-wine/
+
+[4] Wine Jargon: What is Residual Sugar? - Steven Grubbs https://drinks.seriouseats.com/2013/04/wine-jargon-what-is-residual-sugar-riesling-fermentation-steven-grubbs.html
+
+[5] 11 Types of Dry White Wine https://wine.lovetoknow.com/wiki/Types_of_Dry_White_Wine
+
+[6] Using Mixture Models for Clustering http://tinyheero.github.io/2015/10/13/mixture-model.html
+
+[7] Rbokeh http://hafen.github.io/rbokeh/
